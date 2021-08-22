@@ -451,4 +451,4 @@ client.on('message', async message => {
 
 
 client.login(client.config.token);
-config.destroy() 
+
