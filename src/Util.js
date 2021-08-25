@@ -9,8 +9,13 @@ const YouTube = new YouTubeClient.Client()
 const DeezerPublicApi = require('deezer-public-api');
 let deezer = new DeezerPublicApi();
 const al={}
+let SeOptions;
 var i=0
-var request = require("request")
+var url;
+var SOptions=null
+const request = require('request')
+
+
 const { getPreview, getData } = require("spotify-url-info");
 const RegExpList = {
     YouTubeVideo: /^((?:https?:)\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))((?!channel)(?!user)\/(?:[\w\-]+\?v=|embed\/|v\/)?)((?!channel)(?!user)[\w\-]+)(\S+)?$/,
@@ -102,7 +107,7 @@ class Util {
     static async search(Search, SOptions, Queue, Requester, Limit = 1) {
         SOptions = Object.assign({}, this.PlayOptions, SOptions);
         let Filters;
-
+        SeOptions=SOptions
         // Default Options - Type: Video
         let FiltersTypes = await YTSR.getFilters(Search);
         Filters = FiltersTypes.get('Type').get('Video');
@@ -190,7 +195,7 @@ class Util {
 
         if(SpotifyLink) {
             try {
-                let SpotifyResult = await getPreview(Search);
+                let SpotifyResult = await 4(Search);
                 let SearchResult = await this.search(
                     `${SpotifyResult['artist']} - ${SpotifyResult['title']}`,
                     null,
@@ -265,17 +270,20 @@ static async playlist(Search, Queue, Requester, Limit= -1, LocalAddress) {
         let DeezerLink=RegExpList.Deezer.test(Search)
 if(DeezerLink){
 const u=Search
+let al=[]
+let DeezerResult={}
 if(`${u}`.search(`artist`)!=-1){
 const s=`${Search}`.split('https://www.deezer.com/tr/artist/').join('')
-let DeezerResult={}
-deezer.artist(`${s}`).then(async function(result) {
+let a;
+deezer.artist(`${s}`).then(result=> {
+ 
+ console.log(result)
  DeezerResult={
    title:result.name,
    url:Search,
  }
-  
-  
-request({
+
+ request({
     url: result.tracklist,
     json: true
 
@@ -283,14 +291,14 @@ request({
      
     
      
-      for(let b of body.data){
-      
+     body.data.forEach(async b=>{
+    
       DeezerResult={
         title:result.name,
        
         url:Search,
         videos: Object.values(b.title) ? Object.values(b.title) : [],
-        videoCount:0,
+        videoCount:body.total,
         
       
      
@@ -298,19 +306,86 @@ request({
      
         
       }
-      }
-      console.log(DeezerResult)
-     DeezerResult.videos = await Promise.all(DeezerResult.videos.map(async (track, index) => {
+
+    
+       DeezerResult.videos = await Promise.all(DeezerResult.videos.map(async (track, index) => {
+      
+       SOptions = Object.assign({}, this.PlayOptions, SOptions);
+      
+        let Filters;
+
+        // Default Options - Type: Video
+        let FiltersTypes = await YTSR.getFilters(`${result.name}-${b.title}`);
+        Filters = FiltersTypes.get('Type').get('Video');
+        console.log(Filters)
+        // Custom Options - Upload date: null
+        if (SOptions.uploadDate !== null)
+            Filters = Array.from(
+                (
+                    await YTSR.getFilters(Filters.url)
+                )
+                    .get('Upload date'), ([name, value]) => ({ name, url: value.url })
+                )
+                    .find(o => o.name.toLowerCase().includes(SOptions.uploadDate))
+                 Filters;
+
+        // Custom Options - Duration: null
+        if (SOptions.duration !== null)
+            Filters = Array.from(
+                (
+                    await YTSR.getFilters(Filters.url)
+                )
+                    .get('Duration'), ([name, value]) => ({ name, url: value.url })
+                )
+                    .find(o => o.name.toLowerCase().startsWith(SOptions.duration))
+                Filters;
+
+        // Custom Options - Sort by: relevance
+        if (SOptions.duration !== null)
+            Filters = Array.from(
+                (
+                    await YTSR.getFilters(Filters.url)
+                )
+                    .get('Sort by'), ([name, value]) => ({ name, url: value.url })
+                )
+                    .find(o => o.name.toLowerCase().includes(SOptions.sortBy))
+                 Filters;
+
+        try {
+            let Result = await YTSR(
+                Filters.url,
+                {
+                    limit: Limit,
+                    nextpageRef: Filters.url,
+                }
+            );
+
+            let { items } = Result;
+
+            items = items.map(item => {
+                if(item.type.toLowerCase() !== 'video')
+                    return null;
+                item = {
+                    title: item.title,
+                    duration: item.duration,
+                    channel: {
+                        name: item.author.name,
+                    },
+                    url: item.url,
+                    thumbnail: item.bestThumbnail.url,
+                    isLiveContent: item.isLive
+                };
                 
-              
+                return new Song(item, Queue, Requester);
+            }).filter(I => I);
+
+            return items;
+        }
+        catch (e) {
+            throw 'SearchIsNull';
+        }
                     
-                let Result = this.search(
-                    `${result.name}-${DeezerResult.videos}`,
-                    null,
-                    Queue,
-                    Requester
-                ).catch(() => null);
-                return Result ? Result[0] : null;
+                
             })
                 .filter(V => V)
             )
@@ -323,6 +398,10 @@ request({
      
      console.log(DeezerResult)
      return new Playlist(DeezerResult,Queue,Requester)
+      })
+
+      
+    
       
     
      
@@ -333,72 +412,19 @@ request({
 
 })
 
-
-if(i>25){
-  request({
-    url: result.next,
-    json: true
-
-}, async function (error, response, body) {
-     
-     body.data.forEach(async b=>{
-      DeezerResult={
-        title:result.name,
-       
-        url:Search,
-        videos: Object.values(b.title) ? Object.values(b.title) : [],
-        videoCount:0
-        
-      }
+})
+}
       
+    
      
-       
-     
-        
-     })
-      DeezerResult.videos = await Promise.all(DeezerResult.videos.map(async (track, index) => {
-                
-              
-                    
-                let Result = await this.search(
-                    `${result.name}-${DeezerResult.videos}`,
-                    null,
-                    Queue,
-                    Requester
-                ).catch(() => null);
-                return Result ? Result[0] : null;
-            })
-                .filter(V => V)
-            )
-            DeezerResult.videoCount =
-                Limit === -1 ?
-                    DeezerResult.videos.length :
-                    DeezerResult.videos.length > Limit ?
-                        Limit :
-                        DeezerResult.videos.length;
-     
-   
-        
-     
-      
-       
-      
-        
-     
-       
       
      
  
 
 
-})
-}
 
 
-})
- 
-   
-}
+
 if(`${u}`.search('playlist')!=-1){
  const deezer_playlist=`${Search}`.split('https://www.deezer.com/tr/playlist/').join('')
  deezer.playlist(`${deezer_playlist}`).then(async function(result) {
@@ -413,8 +439,7 @@ if(`${u}`.search('playlist')!=-1){
      for(var i=0;i<=Object.keys(result.tracks.data).length;i++){
        al.push(`${result.tracks.data[i].artist.name}`+`-`+`${result.tracks.data[i].title}`)
       
-       await d.play(ctx, `${result.tracks.data[i].artist.name}`+`-`+`${result.tracks.data[i].title}`)
-      
+    
        
      }
      
@@ -448,6 +473,7 @@ if(`${u}`.search(`album`)!=-1){
   return new Playlist(DeezerResult,Queue,Requester)
 }
         if(SpotifyPlaylistLink) {
+          console.log('Etkin') 
             let SpotifyResult = await getData(Search).catch(() => null);
             if(SpotifyResult&&['user'].includes(SpotifyResult['type'])){
               SpotifyResult = {
